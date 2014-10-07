@@ -30,20 +30,33 @@ import org.apache.tajo.util.TUtil;
 import com.google.common.base.Objects;
 import com.google.gson.annotations.Expose;
 
-public abstract class ColumnHistogram implements ProtoObject<CatalogProtos.ColumnHistogramProto>, Cloneable, GsonObject {
+public abstract class Histogram implements ProtoObject<CatalogProtos.HistogramProto>, Cloneable, GsonObject {
+  @Expose private String lastAnalyzed = null; // optional
   @Expose private List<HistogramBucket> buckets = null; // repeated
 
-  public ColumnHistogram() {
+  public Histogram() {
     buckets = TUtil.newList();
   }
 
-  public ColumnHistogram(CatalogProtos.ColumnHistogramProto proto) {
+  public Histogram(CatalogProtos.HistogramProto proto) {
+    if (proto.hasLastAnalyzed()) {
+      this.lastAnalyzed = proto.getLastAnalyzed();
+    }
+    
     this.buckets = TUtil.newList();
     for (CatalogProtos.HistogramBucketProto bucketProto : proto.getBucketsList()) {
       this.buckets.add(new HistogramBucket(bucketProto));
     }
   }
 
+  public String getLastAnalyzed() {
+    return this.lastAnalyzed;
+  }
+  
+  public void setLastAnalyzed(String lastAnalyzed) {
+    this.lastAnalyzed = lastAnalyzed;
+  }
+  
   public List<HistogramBucket> getBuckets() {
     return this.buckets;
   }
@@ -61,37 +74,42 @@ public abstract class ColumnHistogram implements ProtoObject<CatalogProtos.Colum
   }
 
   public boolean equals(Object obj) {
-    if (obj instanceof ColumnHistogram) {
-      ColumnHistogram other = (ColumnHistogram) obj;
-      return TUtil.checkEquals(this.buckets, other.buckets);
+    if (obj instanceof Histogram) {
+      Histogram other = (Histogram) obj;
+      return getLastAnalyzed().equals(other.getLastAnalyzed())
+          && TUtil.checkEquals(this.buckets, other.buckets);
     } else {
       return false;
     }
   }
 
   public int hashCode() {
-    return Objects.hashCode(this.buckets);
+    return Objects.hashCode(this.lastAnalyzed, this.buckets);
   }
 
   public Object clone() throws CloneNotSupportedException {
-    ColumnHistogram hist = (ColumnHistogram) super.clone();
+    Histogram hist = (Histogram) super.clone();
+    hist.lastAnalyzed = this.lastAnalyzed;
     hist.buckets = new ArrayList<HistogramBucket>(this.buckets);
     return hist;
   }
 
   public String toString() {
-    return CatalogGsonHelper.getPrettyInstance().toJson(this, ColumnHistogram.class);
+    return CatalogGsonHelper.getPrettyInstance().toJson(this, Histogram.class);
   }
 
   @Override
   public String toJson() {
-    return CatalogGsonHelper.toJson(this, ColumnHistogram.class);
+    return CatalogGsonHelper.toJson(this, Histogram.class);
   }
 
 
   @Override
-  public CatalogProtos.ColumnHistogramProto getProto() {
-    CatalogProtos.ColumnHistogramProto.Builder builder = CatalogProtos.ColumnHistogramProto.newBuilder();
+  public CatalogProtos.HistogramProto getProto() {
+    CatalogProtos.HistogramProto.Builder builder = CatalogProtos.HistogramProto.newBuilder();
+    if (this.lastAnalyzed != null) {
+      builder.setLastAnalyzed(this.lastAnalyzed);
+    }
     if (this.buckets != null) {
       for (HistogramBucket bucket : buckets) {
         builder.addBuckets(bucket.getProto());

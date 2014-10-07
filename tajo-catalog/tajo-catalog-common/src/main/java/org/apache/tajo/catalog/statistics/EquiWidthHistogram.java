@@ -18,18 +18,18 @@
 
 package org.apache.tajo.catalog.statistics;
 
-import org.apache.tajo.catalog.proto.CatalogProtos.ColumnHistogramProto;
+import org.apache.tajo.catalog.proto.CatalogProtos.HistogramProto;
 
 /**
  * A histogram where the entire value range of the data points are divided into buckets of equal sizes.
  */
-public class EquiWidthHistogram extends ColumnHistogram {
+public class EquiWidthHistogram extends Histogram {
 
   public EquiWidthHistogram() {
     super();
   }
 
-  public EquiWidthHistogram(ColumnHistogramProto proto) {
+  public EquiWidthHistogram(HistogramProto proto) {
     super(proto);
   }
 

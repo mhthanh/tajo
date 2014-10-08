@@ -33,4 +33,9 @@ public class EquiWidthHistogram extends Histogram {
     super(proto);
   }
 
+  @Override
+  public boolean construct() {
+    
+    return true;
+  }
 }

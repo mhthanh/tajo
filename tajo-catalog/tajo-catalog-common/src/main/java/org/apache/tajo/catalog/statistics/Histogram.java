@@ -26,32 +26,31 @@ import org.apache.tajo.catalog.proto.CatalogProtos;
 import org.apache.tajo.common.ProtoObject;
 import org.apache.tajo.json.GsonObject;
 import org.apache.tajo.util.TUtil;
-import org.apache.tajo.util.datetime.DateTimeUtil;
 
 import com.google.common.base.Objects;
 import com.google.gson.annotations.Expose;
 
 public class Histogram implements ProtoObject<CatalogProtos.HistogramProto>, Cloneable, GsonObject {
-  @Expose private String lastAnalyzed = null; // optional
-  @Expose private List<HistogramBucket> buckets = null; // repeated
-  @Expose private boolean isReady; // whether this histogram is ready to be used for selectivity estimation
-
+  
+  @Expose protected String lastAnalyzed = null; // optional
+  @Expose protected List<HistogramBucket> buckets = null; // repeated
+  @Expose protected boolean isReady; // whether this histogram is ready to be used for selectivity estimation
+  protected int DEFAULT_NUM_BUCKETS = 100; // Same as PostgreSQL
+  
   public Histogram() {
     buckets = TUtil.newList();
     isReady = false;
   }
 
   public Histogram(CatalogProtos.HistogramProto proto) {
-    this();
-    
     if (proto.hasLastAnalyzed()) {
       this.lastAnalyzed = proto.getLastAnalyzed();
-    }
-    
+    }    
     buckets = TUtil.newList();
     for (CatalogProtos.HistogramBucketProto bucketProto : proto.getBucketsList()) {
       this.buckets.add(new HistogramBucket(bucketProto));
     }
+    isReady = true;
   }
   
   public String getLastAnalyzed() {
@@ -78,6 +77,14 @@ public class Histogram implements ProtoObject<CatalogProtos.HistogramProto>, Clo
     return this.buckets.size();
   }
 
+  public boolean getIsReady() {
+    return this.isReady;
+  }
+  
+  public void setIsReady(boolean isReady) {
+    this.isReady = isReady;
+  }
+  
   public boolean equals(Object obj) {
     if (obj instanceof Histogram) {
       Histogram other = (Histogram) obj;
@@ -96,6 +103,7 @@ public class Histogram implements ProtoObject<CatalogProtos.HistogramProto>, Clo
     Histogram hist = (Histogram) super.clone();
     hist.lastAnalyzed = this.lastAnalyzed;
     hist.buckets = new ArrayList<HistogramBucket>(this.buckets);
+    hist.isReady = this.isReady;
     return hist;
   }
 
@@ -124,62 +132,78 @@ public class Histogram implements ProtoObject<CatalogProtos.HistogramProto>, Clo
   }
 
   /**
-   * Construct a histogram. More specifically, compute the number of buckets and the min, max, frequency values for
-   * each of them. This method must be overridden by specific sub-classes.
+   * Construct a histogram. Compute the number of buckets and the min, max, frequency values for each of them. This
+   * method must be overridden by specific sub-classes. The number of buckets should be less than or equal to the 
+   * sample size.
+   * 
+   * @param samples Sample data points to construct the histogram. Should fit in the memory.
    * @return Return true if the computation is done without any problem. Otherwise, return false
    */
-  public boolean construct() {
-    //lastAnalyzed = System.currentTimeMillis();
+  public boolean construct(List<Double> samples) {
+    // When overridden in sub-classes, remember to update lastAnalyzed and isReady before returning
     return false;
   }
 
   /**
-   * A short-hand version of estimatedFrequency() that returns the selectivity in range [0..1]
+   * Estimate the selectivity. "from" must be less than or equal to "to".
+   * 
    * @param from
-   * @param isFromInclusive
    * @param to
-   * @param isToInclusive
-   * @return
+   * @return The selectivity in range [0..1]. If the histogram is not ready (i.e., being constructed), return -1
    */
-  public double estimateSelectivity(Long from, boolean isFromInclusive, Long to, boolean isToInclusive) {
-    Long freq = estimateFrequency(from, isFromInclusive, to, isToInclusive);
-    Long totalFreq = 0l;
+  public double estimateSelectivity(Double from, Double to) {
+    if(!isReady) return -1;
+    Double freq = estimateFrequency(from, to);
+    Double totalFreq = 0.0;
     for(HistogramBucket bucket : buckets) {
       totalFreq += bucket.getFrequency();
     }
-    double selectivity = (double) freq / totalFreq;
+    double selectivity = freq / totalFreq;
     return selectivity;
   }
   
   /**
    * Based on the histogram's buckets, estimate the number of rows whose values (of the corresponding column) are
-   * between "from" and "to". For example, in the query "SELECT * from Employee WHERE age >= 20 and age < 30", 
-   * "from" is 20 and "to" is 30, "isFromInclusive" is TRUE and "isToInclusive" is FALSE. If "from" is not specified
-   * in the predicate, Long.MIN_VALUE should be used. Similarly, if "to" is not specified in the predicate, 
-   * Long.MAX_VALUE should be used.
+   * between "from" and "to". For example, in the query "SELECT * from Employee WHERE age >= 20 and age < 30", "from"
+   * is 20 and "to" is 30. If "from" is not specified in the predicate, Long.MIN_VALUE should be used. Similarly, if
+   * "to" is not specified in the predicate, Long.MAX_VALUE should be used.
+   * 
    * @param from
-   * @param isFromInclusive  
    * @param to
-   * @param isToInclusive
    * @return 
    */
-  public Long estimateFrequency(Long from, boolean isFromInclusive, Long to, boolean isToInclusive) {
-    Long estimate = 0l;
-    
+  private Double estimateFrequency(Double from, Double to) {
+    Double estimate = 0.0;
     for(HistogramBucket bucket : buckets) {
-      estimate += estimateFrequency(bucket, from, isFromInclusive, to, isToInclusive);
+      estimate += estimateFrequency(bucket, from, to);
     }
-    
     return estimate;
   }
   
-  private Long estimateFrequency(HistogramBucket bucket, Long from, boolean isFromInclusive, Long to, boolean isToInclusive) {
-    Long estimate = 0l;
+  private Double estimateFrequency(HistogramBucket bucket, Double from, Double to) {
+    Double min = bucket.getMin();
+    Double max = bucket.getMax();
+    Double width = max - min;
+    Double overlap = 0.0;
     
-    if(to < bucket.getMin()) return 0l;
-    if(from > bucket.getMax()) return 0l;
+    if(from < min) {
+      if(to < min) {
+	overlap = 0.0;
+      } else if (to >= min && to <= max) {
+	overlap = (to - min) / width;
+      } else {
+	overlap = 1.0;
+      }
+    } else if(from >= min && from <= max) {
+      if(to <= max) {
+	overlap = (to - from) / width;
+      } else {
+	overlap = (max - from) / width;
+      }
+    } else { // from > max
+      overlap = 0.0;
+    }
     
-    //estimatedFrequency = (overlappingAreaHotspotAndQuery / theHotspotRegion.GetSize()) * aBucket.GetObjectFrequency();    
-    return estimate;
+    return overlap * bucket.getFrequency();
   }
 }

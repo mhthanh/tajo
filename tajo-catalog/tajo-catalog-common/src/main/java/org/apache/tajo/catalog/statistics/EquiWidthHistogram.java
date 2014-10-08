@@ -18,6 +18,8 @@
 
 package org.apache.tajo.catalog.statistics;
 
+import java.util.List;
+
 import org.apache.tajo.catalog.proto.CatalogProtos.HistogramProto;
 
 /**
@@ -34,8 +36,22 @@ public class EquiWidthHistogram extends Histogram {
   }
 
   @Override
-  public boolean construct() {
+  public boolean construct(List<Double> samples) {
+    Double min = Double.MAX_VALUE;
+    Double max = Double.MIN_VALUE;
+    for(Double p : samples) {
+      if(p < min) min = p;
+      if(p > max) max = p;
+    }
     
+    int numBuckets = samples.size() < DEFAULT_NUM_BUCKETS ? samples.size() : DEFAULT_NUM_BUCKETS;
+    Double width = (max - min) / numBuckets;
+    for(int i=0; i<numBuckets; i++) {
+      
+    }
+    
+    // lastAnalyzed =
+    isReady = true;
     return true;
   }
 }

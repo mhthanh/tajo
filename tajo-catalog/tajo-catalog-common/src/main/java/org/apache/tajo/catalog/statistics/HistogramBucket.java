@@ -28,6 +28,7 @@ import com.google.common.base.Objects;
 import com.google.gson.annotations.Expose;
 
 public class HistogramBucket implements ProtoObject<CatalogProtos.HistogramBucketProto>, Cloneable, GsonObject {
+  
   @Expose private Double min = null; // required
   @Expose private Double max = null; // required
   @Expose private Long frequency = null; // required

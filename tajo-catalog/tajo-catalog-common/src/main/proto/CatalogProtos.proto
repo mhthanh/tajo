@@ -209,7 +209,7 @@ message ColumnStatsProto {
 }
 
 message HistogramProto {
-  optional string lastAnalyzed = 1;
+  optional int64 lastAnalyzed = 1;
   repeated HistogramBucketProto buckets = 2;
 }
 

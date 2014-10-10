@@ -32,16 +32,16 @@ import com.google.gson.annotations.Expose;
 
 public class Histogram implements ProtoObject<CatalogProtos.HistogramProto>, Cloneable, GsonObject {
   
-  @Expose protected String lastAnalyzed = null; // optional
+  @Expose protected Long lastAnalyzed = null; // optional
   @Expose protected List<HistogramBucket> buckets = null; // repeated
   @Expose protected boolean isReady; // whether this histogram is ready to be used for selectivity estimation
-  protected int DEFAULT_NUM_BUCKETS = 100; // Same as PostgreSQL
-  
+  protected int DEFAULT_MAX_BUCKETS = 100; // Same as PostgreSQL
+
   public Histogram() {
     buckets = TUtil.newList();
     isReady = false;
   }
-
+  
   public Histogram(CatalogProtos.HistogramProto proto) {
     if (proto.hasLastAnalyzed()) {
       this.lastAnalyzed = proto.getLastAnalyzed();
@@ -53,11 +53,11 @@ public class Histogram implements ProtoObject<CatalogProtos.HistogramProto>, Clo
     isReady = true;
   }
   
-  public String getLastAnalyzed() {
+  public Long getLastAnalyzed() {
     return this.lastAnalyzed;
   }
   
-  public void setLastAnalyzed(String lastAnalyzed) {
+  public void setLastAnalyzed(Long lastAnalyzed) {
     this.lastAnalyzed = lastAnalyzed;
   }
   
@@ -152,6 +152,7 @@ public class Histogram implements ProtoObject<CatalogProtos.HistogramProto>, Clo
    * @return The selectivity in range [0..1]. If the histogram is not ready (i.e., being constructed), return -1
    */
   public double estimateSelectivity(Double from, Double to) {
+    if(from > to) return 0;
     if(!isReady) return -1;
     Double freq = estimateFrequency(from, to);
     Double totalFreq = 0.0;
@@ -160,6 +161,18 @@ public class Histogram implements ProtoObject<CatalogProtos.HistogramProto>, Clo
     }
     double selectivity = freq / totalFreq;
     return selectivity;
+  }
+  
+  public double estimateSelectivity(Float from, Float to) {
+    return estimateSelectivity(from.doubleValue(), to.doubleValue());
+  }
+  
+  public double estimateSelectivity(Long from, Long to) {
+    return estimateSelectivity(from.doubleValue(), to.doubleValue());
+  }
+  
+  public double estimateSelectivity(Integer from, Integer to) {
+    return estimateSelectivity(from.doubleValue(), to.doubleValue());
   }
   
   /**
@@ -186,22 +199,30 @@ public class Histogram implements ProtoObject<CatalogProtos.HistogramProto>, Clo
     Double width = max - min;
     Double overlap = 0.0;
     
-    if(from < min) {
-      if(to < min) {
+    if (min < max) {
+      if (from < min) {
+	if (to < min) {
+	  overlap = 0.0;
+	} else if (to >= min && to <= max) {
+	  overlap = (to - min) / width;
+	} else {
+	  overlap = 1.0;
+	}
+      } else if (from >= min && from <= max) {
+	if (to <= max) {
+	  overlap = (to - from) / width;
+	} else {
+	  overlap = (max - from) / width;
+	}
+      } else {
 	overlap = 0.0;
-      } else if (to >= min && to <= max) {
-	overlap = (to - min) / width;
-      } else {
+      }
+    } else { // min == max
+      if(min >= from && min <= to) {
 	overlap = 1.0;
-      }
-    } else if(from >= min && from <= max) {
-      if(to <= max) {
-	overlap = (to - from) / width;
       } else {
-	overlap = (max - from) / width;
+	overlap = 0.0;
       }
-    } else { // from > max
-      overlap = 0.0;
     }
     
     return overlap * bucket.getFrequency();

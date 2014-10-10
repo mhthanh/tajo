@@ -78,7 +78,11 @@ public class HistogramBucket implements ProtoObject<CatalogProtos.HistogramBucke
   }
   
   public void setFrequency(Long freqVal) {
-    this.frequency = freqVal;
+    if(freqVal < 0) {
+      this.frequency = 0l;
+    } else {
+      this.frequency = freqVal;
+    }
   }
 
   public boolean equals(Object obj) {
